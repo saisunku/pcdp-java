@@ -32,53 +32,30 @@ public final class ParBoruvka extends AbstractBoruvka<ParBoruvka.ParComponent> {
 
 		ParComponent comp1 = null;
 
-		while (!nodesLoaded.isEmpty()) {
-			// if (Math.random() < 0.01) System.out.println("Nodes left " + nodesLoaded.size());
+		while ((comp1 = nodesLoaded.poll()) != null) {
+            if (comp1.isDead || !comp1.lock.tryLock()) continue;
 
-			// Load one node from list
-			comp1 = nodesLoaded.poll();
-			if (comp1 == null) break;
+            Edge<ParComponent> minEdge = comp1.getMinEdge();
 
-			if (comp1.lock.tryLock()) {
-				try {
-					if (comp1.isDead) continue;
+            if (minEdge == null) {
+                solution.setSolution(comp1); // Only one edge remaining
+                return;
+            }
 
-					// Iterate over neighbors and find lowest weight edge
-					Edge<ParComponent> minEdge = comp1.getMinEdge();
+            ParComponent comp2 = minEdge.getOther(comp1);
 
-					if (minEdge == null) {
-						  solution.setSolution(comp1); // Only one edge remaining
-						  return;
-					}
+            if (comp2.isDead || !comp2.lock.tryLock()) {
+                comp1.lock.unlock();
+                nodesLoaded.offer(comp1);
+                continue;
+            }
 
-					ParComponent comp2 = minEdge.getOther(comp1);
-					if (comp2.lock.tryLock()) {
-						try {
-							// Mark second node as dead
-							comp2.isDead = true;
-							// Merge two node
-							comp1.merge(comp2, minEdge.weight());
-							nodesLoaded.offer(comp1);
-						} finally {
-							comp2.lock.unlock();
-						}
-					}
-				} finally {
-					comp1.lock.unlock();
-				}
-
-			} else {
-				// Replace comp1 back into the queue
-				nodesLoaded.offer(comp1);
-			}
-		}
-
-		// if (!done) {
-		// 	synchronized(done) {
-		// 		solution.setSolution(comp1);
-		// 		done = true;
-		// 	}
-		// }
+            comp1.merge(comp2, minEdge.weight());
+            comp2.isDead = true;
+            comp1.lock.unlock();
+            comp2.lock.unlock();
+            nodesLoaded.offer(comp1);
+        }
     }
 
     /**
